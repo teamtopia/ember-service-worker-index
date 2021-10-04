@@ -85,10 +85,12 @@ function cacheFirstFetch(event) {
 }
 
 function readFromCache() {
+  console.log('ember-service-worker-index: readFromCache');
   return caches.match(INDEX_HTML_URL, {cacheName: CACHE_NAME});
 }
 
 async function cacheFallbackFetch() {
+  console.log('ember-service-worker-index: cacheFallbackFetch');
   // Race a timeout and fetch request
   let timeoutPromise = new Promise(res =>
     setTimeout(() => res('timeout'), TIMEOUT),
@@ -107,13 +109,17 @@ async function cacheFallbackFetch() {
     clearTimeout(timeoutPromise);
 
     // Update the cache
+    console.log('ember-service-worker-index: update cache');
     let cache = await caches.open(CACHE_NAME);
     cache.put(INDEX_HTML_URL, result.clone());
 
     // Respond with result
     return result;
   } catch (e) {
-    console.warn('cacheFallbackFetch -- failed for:', e);
+    console.warn(
+      'ember-service-worker-index: cacheFallbackFetch -- failed for:',
+      e,
+    );
 
     // if the promise rejects, fallback to the cache
     return readFromCache();
