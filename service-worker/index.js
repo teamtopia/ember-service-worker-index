@@ -13,7 +13,11 @@ import cleanupCaches from 'ember-service-worker/service-worker/cleanup-caches';
 
 const CACHE_KEY_PREFIX = 'esw-index';
 const CACHE_NAME = `${CACHE_KEY_PREFIX}-${VERSION}`;
-const INDEX_HTML_URL = new URL(INDEX_HTML_PATH, self.location).toString();
+
+// Capacitor expects the index request to come from the origin URL with
+// no additions to the path. The following would obviously be a breaking
+// change and needs to be refactored before making a PR.
+const INDEX_HTML_URL = new URL('', self.location.origin).toString();
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -95,14 +99,39 @@ async function cacheFallbackFetch() {
   let timeoutPromise = new Promise(res =>
     setTimeout(() => res('timeout'), TIMEOUT),
   );
-  let fetchPromise = fetch(INDEX_HTML_URL, {credentials: 'include'});
+
+  // The default Accept header is often '*/*'. There are however some use cases
+  // where a more strict header is required. Specifically Capacitor needs
+  // the more specific header to know it is allowed to inject the native bridge
+  // code for Android devices.
+  // Perhaps this shold be made a configuration option?
+  let fetchPromise = fetch(INDEX_HTML_URL, {
+    credentials: 'include',
+    headers: {Accept: 'text/html'},
+  });
 
   try {
     let result = await Promise.race([timeoutPromise, fetchPromise]);
 
     // If the timeout won, fallback to the cache
     if (result === 'timeout') {
-      return readFromCache();
+      console.log(
+        'ember-service-worker-index: cacheFallbackFetch -- timed out',
+      );
+      let cacheValue = await readFromCache();
+
+      // If the cache was empty, respond with the original fetchPromise
+      if (cacheValue) {
+        console.log(
+          'ember-service-worker-index: cacheFallbackFetch -- returning cached value',
+        );
+        return cacheValue;
+      } else {
+        console.log(
+          'ember-service-worker-index: cacheFallbackFetch -- returning original promise',
+        );
+        return fetchPromise;
+      }
     }
 
     // Clean up timeout
